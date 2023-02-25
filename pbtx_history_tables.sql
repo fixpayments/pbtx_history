@@ -33,9 +33,9 @@ CREATE TABLE PERMISSION_HISTORY
   event_id              BIGINT NOT NULL,
   block_num             BIGINT NOT NULL,
   block_time            TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-  trx_id                VARCHAR(64),
-  is_active             BOOLEAN,
-  actor                 BIGINT PRIMARY KEY,
+  trx_id                VARCHAR(64) NOT NULL,
+  is_active             BOOLEAN NOT NULL,
+  actor                 BIGINT NOT NULL,
   permission            BYTEA NOT NULL
 );
 
