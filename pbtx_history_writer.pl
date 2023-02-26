@@ -5,6 +5,9 @@ use JSON;
 use Google::ProtocolBuffers::Dynamic;
 use FindBin;
 
+our @pbtx_transaction_hooks;
+
+
 my $pbtx_contract;
 my $network_id;
 my $proto;
@@ -31,6 +34,7 @@ sub pbtx_history_prepare
     my $pbtx_proto_dir = $FindBin::Bin;
     $proto = Google::ProtocolBuffers::Dynamic->new($pbtx_proto_dir);
     $proto->map({ package => 'pbtx', prefix => 'PBTX' });
+    $proto->load_file('pbtx.proto');
     
     my $dbh = $main::db->{'dbh'};
 
@@ -57,7 +61,7 @@ sub pbtx_history_check_kvo
 {
     my $kvo = shift;
 
-    if( $kvo->{'code'} eq $pbtx_contract and $kvo->{'scope'} == $network_id )
+    if( $kvo->{'code'} eq $pbtx_contract and $kvo->{'scope'} == $network_id and $kvo->{'table'} eq 'history' )
     {
         return 1;
     }
@@ -71,9 +75,39 @@ sub pbtx_history_row
     my $kvo = shift;
     my $block_num = shift;
     my $block_time = shift;
-
-    if( $kvo->{'code'} eq $pbtx_contract and $kvo->{'scope'} == $network_id )
+    
+    if( $added and
+        $kvo->{'code'} eq $pbtx_contract and $kvo->{'scope'} == $network_id and $kvo->{'table'} eq 'history' )
     {
+        my $event_type = $kvo->{'value'}{'event_type'};
+        if( $event_type == 2 or $event_type == 3 ) # PBTX_HISTORY_EVENT_REGACTOR or PBTX_HISTORY_EVENT_UNREGACTOR
+        {
+            my $perm = PBTX::Permission->decode($kvo->{'value'}{'data'});
+            
+            $main::db->{'current_permission_upd'}->execute(
+                $perm->get_actor(), $kvo->{'value'}{'data'}, $block_time,
+                $kvo->{'value'}{'data'}, $block_time);
+            
+            $main::db->{'permission_history_ins'}->execute(
+                $kvo->{'value'}{'id'}, $block_num, $block_time, $kvo->{'value'}{'trx_id'},
+                $perm->get_actor(), ($event_type == 2)?1:0, $kvo->{'value'}{'data'});
+        }
+        elsif( $event_type == 4 ) # PBTX_HISTORY_EVENT_EXECTRX
+        {
+            my $trx = PBTX::Transaction->decode($kvo->{'value'}{'data'});
+            my $trxbody = PBTX::TransactionBody->decode($trx->get_body());
+            
+            $main::db->{'pbtx_transactions_ins'}->execute(
+                $kvo->{'value'}{'id'}, $block_num, $block_time, $kvo->{'value'}{'trx_id'},
+                $trxbody->get_actor(), $trxbody->get_seqnum(), $trxbody->get_transaction_type(),
+                $kvo->{'value'}{'data'});
+
+            foreach my $hook (@pbtx_transaction_hooks)
+            {
+                &{$hook}($block_num, $block_time, $trxbody->get_actor(), $trxbody->get_seqnum(),
+                         $trxbody->get_transaction_type(), $trxbody->get_transaction_content());
+            }
+        }
     }
 }
 
