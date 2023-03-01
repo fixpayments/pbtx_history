@@ -3,7 +3,6 @@ use warnings;
 use DBD::Pg qw(:pg_types);
 use JSON;
 use Google::ProtocolBuffers::Dynamic;
-use FindBin;
 
 our @pbtx_transaction_hooks;
 
@@ -31,7 +30,8 @@ sub pbtx_history_prepare
     $pbtx_contract = $args->{'pbtx_contract'};
     $network_id = $args->{'network_id'};
 
-    my $pbtx_proto_dir = $FindBin::Bin;
+    my $pbtx_proto_dir = __FILE__;
+    $pbtx_proto_dir =~ s/\/[a-z_.]+$//;
     $proto = Google::ProtocolBuffers::Dynamic->new($pbtx_proto_dir);
     $proto->map({ package => 'pbtx', prefix => 'PBTX' });
     $proto->load_file('pbtx.proto');
